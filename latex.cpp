@@ -1,21 +1,27 @@
 #include "latex.hpp"
 
-#include <boost/filesystem.hpp>
+#include <filesystem>
+#include <cstring>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <libplatform/libplatform.h>
 #include <wkhtmltox/image.h>
 
+std::string ObjectToString(v8::Isolate* isolate, v8::Local<v8::Value> value) {
+  v8::String::Utf8Value utf8_value(isolate, value);
+  return std::string(*utf8_value);
+}
+
 std::string Latex::_find_katex_path()
 {
 	for (std::string dir = "./", end = "./../../"; dir != end; dir += "../")
 	{
-		for (const auto& file : boost::filesystem::directory_iterator(dir))
+		for (const auto& file : std::filesystem::directory_iterator(dir))
 		{
 			auto path = file.path();
 			
-			if (path.stem() == "katex" && boost::filesystem::is_directory(path))
+			if (path.stem() == "katex" && std::filesystem::is_directory(path))
 			{
 				return path.string();
 			}
@@ -128,9 +134,8 @@ std::string Latex::to_html(const std::string& latex) const
 	source += _escape(latex) + "', ";
 	source += arguments + ");";
 	
-	auto value = _run(source, context);
-	
-	std::string html = *static_cast<v8::String::Utf8Value>(value);
+	v8::Local<v8::Value> value = _run(source, context);
+	std::string html = ObjectToString(_isolate, value);
 	
 	return "<div class='latex'>\n" + html + "</div>\n";
 }
@@ -180,7 +185,7 @@ void Latex::to_image(const std::string &latex,
 	
 	wkhtmltoimage_destroy_converter(converter);
 	
-	boost::filesystem::remove("temp.html");
+	std::filesystem::remove("temp.html");
 }
 
 void Latex::to_png(const std::string &latex,
@@ -285,7 +290,7 @@ v8::Local<v8::Value> Latex::_run(const std::string& source,
 		// Grab last exception
 		auto exception = try_catch.Exception();
 		
-		std::string what = *static_cast<v8::String::Utf8Value>(exception);
+		std::string what = ObjectToString(_isolate, exception);
 		
 		// Remove the 'ParseError' (redundant)
 		throw ParseException(what.substr(12));
@@ -387,7 +392,7 @@ Latex::_new_converter_settings(const std::string& filepath,
 }
 
 Latex::V8::V8()
-: platform(v8::platform::CreateDefaultPlatform())
+: platform(v8::platform::NewDefaultPlatform())
 {
 	v8::V8::InitializeICU();
 	
@@ -400,7 +405,7 @@ Latex::V8::~V8()
 {
 	v8::V8::Dispose();
 	
-	v8::V8::ShutdownPlatform();
+	v8::V8::DisposePlatform();
 }
 
 void* Latex::Allocator::Allocate(size_t length)
